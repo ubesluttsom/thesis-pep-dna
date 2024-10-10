@@ -22,6 +22,19 @@
 #include "tcp.h"
 #include "tcp_utils.h"
 
+#include <net/tcp.h>
+#include <tcp_lgcc.h>
+
+void lgcc_shim(struct socket *from, struct socket *to)
+{
+/* #ifdef CONFIG_PEPDNA_LGCC */
+    struct tcp_sock *tp_from = tcp_sk(from->sk);
+    struct tcp_sock *tp_to = tcp_sk(to->sk);
+    if (tp_from->rx_opt.lgcc_ok && tp_to->rx_opt.lgcc_ok)
+        tcp_lgcc_set_rate_prev_loop(tp_from, to->sk);
+/* #endif */
+}
+
 /*
  * Forward data from one TCP socket to another
  * ------------------------------------------------------------------------- */
@@ -43,7 +56,9 @@ int pepdna_con_i2i_fwd(struct socket *from, struct socket *to)
 	msg.msg_flags = MSG_DONTWAIT;
 
 	read = kernel_recvmsg(from, &msg, &vec, 1, vec.iov_len, MSG_DONTWAIT);
+    /* pep_debug("read %d bytes from sender", read); */
 	if (likely(read > 0)) {
+        lgcc_shim(from, to);
 		sent = pepdna_sock_write(to, buffer, read);
 		if (sent < 0) {
 			pep_err("error forwarding to socket");

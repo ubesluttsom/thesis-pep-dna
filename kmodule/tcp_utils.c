@@ -1,7 +1,7 @@
 /*
- *  pep-dna/kmodule/utils.c: PEP-DNA related utilities
+ *  pep-dna/pepdna/kmodule/utils.c: PEP-DNA related utilities
  *
- *  Copyright (C) 2023  Kristjon Ciko <kristjoc@ifi.uio.no>
+ *  Copyright (C) 2020  Kristjon Ciko <kristjoc@ifi.uio.no>
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -18,9 +18,8 @@
  */
 
 #include "core.h"           /* core header                                */
-#include "connection.h"
-#include "hash.h"
 #include "tcp_utils.h"      /* main header                                */
+#include "hash.h"
 
 #include <linux/kernel.h>   /* included for sprintf                       */
 #include <linux/kthread.h>  /* included for kthread_should_stop           */
@@ -39,8 +38,8 @@
 #include <linux/sched/signal.h>
 #endif
 
-/* static void pepdna_wait_to_send(struct sock *); */
-/* static bool pepdna_sock_writeable(struct sock *); */
+static void pepdna_wait_to_send(struct sock *);
+static bool pepdna_sock_writeable(struct sock *);
 
 
 /*
@@ -120,32 +119,29 @@ void pepdna_set_bufsize(struct socket *sock)
 /*
  * Check if socket send buffer has space
  * ------------------------------------------------------------------------- */
-/* static bool pepdna_sock_writeable(struct sock *sk) */
-/* { */
-/*         return sk_stream_is_writeable(sk); */
-/* } */
+static bool pepdna_sock_writeable(struct sock *sk)
+{
+        return sk_stream_is_writeable(sk);
+}
 
 /*
  * Wait for sock to become writeable
  * ------------------------------------------------------------------------- */
-/* static void pepdna_wait_to_send(struct sock *sk) */
-/* { */
-/*         struct socket_wq *wq = NULL; */
-/*         long timeo = usecs_to_jiffies(CONN_POLL_TIMEOUT); */
-/* 	struct pepdna_con *con = sk->sk_user_data; */
+static void pepdna_wait_to_send(struct sock *sk)
+{
+        struct socket_wq *wq = NULL;
+        long timeo = usecs_to_jiffies(CONN_POLL_TIMEOUT);
 
-/*         rcu_read_lock(); */
-/*         wq  = rcu_dereference(sk->sk_wq); */
-/*         rcu_read_unlock(); */
+        rcu_read_lock();
+        wq  = rcu_dereference(sk->sk_wq);
+        rcu_read_unlock();
 
-/*         do { */
-/* 		wait_event_interruptible_timeout(wq->wait, */
-/*                                                  pepdna_sock_writeable(sk), */
-/*                                                  timeo); */
-/* 		if (atomic_read(&con->rflag) == 0) */
-/* 			break; */
-/*         } while(!pepdna_sock_writeable(sk)); */
-/* } */
+        do {
+		wait_event_interruptible_timeout(wq->wait,
+                                                 pepdna_sock_writeable(sk),
+                                                 timeo);
+        } while(!pepdna_sock_writeable(sk));
+}
 
 /*
  * Write buf of size_t len to TCP socket
@@ -153,10 +149,10 @@ void pepdna_set_bufsize(struct socket *sock)
  * ------------------------------------------------------------------------- */
 int pepdna_sock_write(struct socket *sock, unsigned char *buf, size_t len)
 {
-	struct msghdr msg = {
-		.msg_flags = MSG_DONTWAIT | MSG_NOSIGNAL,
-	};
-	struct kvec vec;
+        struct msghdr msg = {
+                .msg_flags = MSG_DONTWAIT | MSG_NOSIGNAL,
+        };
+        struct kvec vec;
 	size_t left = len;
         size_t sent = 0;
         int count   = 0;
@@ -167,21 +163,18 @@ int pepdna_sock_write(struct socket *sock, unsigned char *buf, size_t len)
                 vec.iov_base = (unsigned char *)buf + sent;
 
                 rc = kernel_sendmsg(sock, &msg, &vec, 1, left);
-		pep_debug("sending %d bytes from MINIP to TCP", rc);
                 if (rc > 0) {
                         sent += rc;
                         left -= rc;
                 } else {
-                        if (rc == -EAGAIN || rc == 0) {
-                                /* pepdna_wait_to_send(sock->sk); */
-#ifndef CONFIG_PEPDNA_MINIP
-				cond_resched();
-#endif
-				if (++count < 3)
-                                	continue;
-				return -1;
+                        if (rc == -EAGAIN) {
+                                pepdna_wait_to_send(sock->sk);
+                                continue;
+                        } else if (rc == 0) {
+                                if (++count < 3) /* FIXME */
+                                        continue;
                         }
-                        /* return sent ? sent:rc; */
+                        return sent ? sent:rc;
                 }
         }
 

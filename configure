@@ -1,9 +1,11 @@
 #!/bin/bash
 
-KERNBUILDDIR="/lib/modules/`uname -r`/build"
+KERNBUILDDIR="/lib/modules/$(uname -r)/build"
+INSTALL_MOD_PATH=""
 CONFIG_PEPDNA_LOCAL_SENDER="n"
 CONFIG_PEPDNA_LOCAL_RECEIVER="n"
 CONFIG_PEPDNA_DEBUG="n"
+CONFIG_PEPDNA_LGCC="n"
 CONFIG_PEPDNA_RINA="n"
 CONFIG_PEPDNA_CCN="n"
 CONFIG_PEPDNA_UDP="n"
@@ -47,6 +49,21 @@ do
 		# CONFIG_PEPDNA_NEW_ARCH="y"
 		# ;;
 
+		"--kernbuild-dir")
+		KERNBUILDDIR="$2"
+		shift # past argument value
+		;;
+
+		"--install-mod-path")
+		INSTALL_MOD_PATH="$2"
+		shift # past argument value
+		;;
+
+		"--with-lgcc")
+		CONFIG_PEPDNA_LGCC="y"
+		;;
+
+
 		*)
 		echo "Unknown option '$key'"
 		exit 255
@@ -56,7 +73,7 @@ do
 done
 
 # Check if kernel headers are there for out-of-tree build
-if [ ! -d $KERNBUILDDIR ]; then
+if [ ! -d "$KERNBUILDDIR" ]; then
 	echo "Cannot find '$KERNBUILDDIR' kernel build directory"
 	echo "Make sure headers for the running kernel are installed"
 	exit 255
@@ -66,10 +83,12 @@ fi
 cp Makefile.in Makefile
 sed -i "s|@KERNBUILDDIR@|$KERNBUILDDIR|g" Makefile
 sed -i "s|@CONFIG_PEPDNA_MINIP@|${CONFIG_PEPDNA_MINIP}|g" Makefile
+sed -i "s|@INSTALL_MOD_PATH@|$INSTALL_MOD_PATH|g" Makefile
 sed -i "s|@CONFIG_PEPDNA_RINA@|${CONFIG_PEPDNA_RINA}|g" Makefile
 sed -i "s|@CONFIG_PEPDNA_CCN@|${CONFIG_PEPDNA_CCN}|g" Makefile
 sed -i "s|@CONFIG_PEPDNA_UDP@|${CONFIG_PEPDNA_UDP}|g" Makefile
 sed -i "s|@CONFIG_PEPDNA_DEBUG@|${CONFIG_PEPDNA_DEBUG}|g" Makefile
+sed -i "s|@CONFIG_PEPDNA_LGCC@|${CONFIG_PEPDNA_LGCC}|g" Makefile
 sed -i "s|@CONFIG_PEPDNA_LOCAL_SENDER@|${CONFIG_PEPDNA_LOCAL_SENDER}|g" Makefile
 sed -i "s|@CONFIG_PEPDNA_LOCAL_RECEIVER@|${CONFIG_PEPDNA_LOCAL_RECEIVER}|g" Makefile
 cp Makefile kmodule/Makefile
